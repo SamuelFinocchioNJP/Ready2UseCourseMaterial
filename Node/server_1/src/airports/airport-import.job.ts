@@ -7,7 +7,7 @@ import { AirportInput } from "../types";
 // The store lives inside the server process (see store.ts), so this is invoked
 // at startup from index.ts rather than as a standalone script.
 const AIRPORTS_URL =
-  "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
+    "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
 
 // OpenFlights null marker for a missing field (a literal backslash + N).
 const NULL_MARKER = "\\N";
@@ -18,70 +18,73 @@ const NULL_MARKER = "\\N";
 const COL = { name: 1, city: 2, country: 3, iata: 4, timezone: 11 } as const;
 
 export interface ImportSummary {
-  imported: number; // newly created airports
-  updated: number; // existing airports refreshed
-  skipped: number; // rows without a usable IATA code (no primary key)
-  failed: number; // rows that threw an unexpected error
+    imported: number; // newly created airports
+    updated: number; // existing airports refreshed
+    skipped: number; // rows without a usable IATA code (no primary key)
+    failed: number; // rows that threw an unexpected error
 }
 
 // Treat the OpenFlights null marker (and blanks) as "no value".
 function clean(field: string | undefined): string {
-  const value = (field ?? "").trim();
-  return value === NULL_MARKER ? "" : value;
+    const value = (field ?? "").trim();
+    return value === NULL_MARKER ? "" : value;
 }
 
 export async function importAirports(): Promise<ImportSummary> {
-  const res = await fetch(AIRPORTS_URL);
-  if (!res.ok) {
-    throw new Error(`Failed to download airports.dat: ${res.status} ${res.statusText}`);
-  }
-  const csv = await res.text();
+    const res = await fetch(AIRPORTS_URL);
+    if (!res.ok) {
+        throw new Error(`Failed to download airports.dat: ${res.status} ${res.statusText}`);
+    }
+    const csv = (await res.text()).replaceAll("\N", "");
 
-  // No header row; quoted fields may contain commas. relax_* keeps the odd
-  // malformed line from aborting the whole parse.
-  const rows: string[][] = parse(csv, {
-    skip_empty_lines: true,
-    relax_quotes: true,
-    relax_column_count: true,
-  });
+    // No header row; quoted fields may contain commas. relax_* keeps the odd
+    // malformed line from aborting the whole parse.
+    const rows: string[][] = parse(csv, {
+        skip_empty_lines: true,
+        relax_quotes: true,
+        relax_column_count: false,
+    });
 
-  const summary: ImportSummary = { imported: 0, updated: 0, skipped: 0, failed: 0 };
+    const summary: ImportSummary = { imported: 0, updated: 0, skipped: 0, failed: 0 };
 
-  for (const row of rows) {
-    const code = clean(row[COL.iata]);
-    // IATA code is the store's primary key; a row without one cannot be stored.
-    if (!code) {
-      summary.skipped++;
-      continue;
+    for (const row of rows) {
+        const code = clean(row[COL.iata]);
+        // IATA code is the store's primary key; a row without one cannot be stored.
+        if (!code) {
+            console.log("SKIPPED:", row)
+            summary.skipped++;
+            continue;
+        }
+
+        const input: AirportInput = {
+            code,
+            name: clean(row[COL.name]),
+            city: clean(row[COL.city]),
+            country: clean(row[COL.country]),
+            timezone: clean(row[COL.timezone]),
+        };
+
+        // Upsert so the job is idempotent and tolerant of duplicate IATA codes
+        // within the file (last one wins).
+        try {
+            if (input.country === "Italy") {
+                airportService.createAirport(input);
+                summary.imported++;
+            }
+        } catch (err) {
+            if (err instanceof ConflictError) {
+                airportService.updateAirport(code, input);
+                summary.updated++;
+            } else {
+                summary.failed++;
+                console.error(`Failed to import airport "${code}":`, err);
+            }
+        }
     }
 
-    const input: AirportInput = {
-      code,
-      name: clean(row[COL.name]),
-      city: clean(row[COL.city]),
-      country: clean(row[COL.country]),
-      timezone: clean(row[COL.timezone]),
-    };
-
-    // Upsert so the job is idempotent and tolerant of duplicate IATA codes
-    // within the file (last one wins).
-    try {
-      airportService.createAirport(input);
-      summary.imported++;
-    } catch (err) {
-      if (err instanceof ConflictError) {
-        airportService.updateAirport(code, input);
-        summary.updated++;
-      } else {
-        summary.failed++;
-        console.error(`Failed to import airport "${code}":`, err);
-      }
-    }
-  }
-
-  console.log(
-    `Airport import complete: ${summary.imported} imported, ${summary.updated} updated, ` +
-      `${summary.skipped} skipped, ${summary.failed} failed.`
-  );
-  return summary;
+    console.log(
+        `Airport import complete: ${summary.imported} imported, ${summary.updated} updated, ` +
+        `${summary.skipped} skipped, ${summary.failed} failed.`
+    );
+    return summary;
 }
