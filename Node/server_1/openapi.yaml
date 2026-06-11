@@ -1,0 +1,396 @@
+openapi: 3.0.3
+info:
+  title: Airports & Flights API
+  version: 1.0.0
+  description: >
+    In-memory REST API for two CRUD resources: **airports** and **flights**.
+    All data is held in memory and is lost on server restart (by design — no database).
+
+
+    Notes on server-owned fields:
+
+    - `Flight.id` is server-assigned and monotonic; any client-supplied `id` on
+      create/update is ignored. IDs are never reused after a delete.
+
+    - `Airport.futureFlights` is **computed on every read**, never stored or client-set.
+      It contains the flights departing from that airport whose `dateTimeDeparture`
+      is strictly after the current time.
+
+    - On `PUT /airports/{code}` the path `code` wins over any `code` in the body.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Airports
+    description: Airport CRUD
+  - name: Flights
+    description: Flight CRUD
+
+paths:
+  /airports:
+    get:
+      tags: [Airports]
+      summary: List all airports
+      description: Returns every airport, each with its computed `futureFlights`.
+      operationId: listAirports
+      responses:
+        "200":
+          description: List of airports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Airport"
+    post:
+      tags: [Airports]
+      summary: Create an airport
+      operationId: createAirport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AirportInput"
+      responses:
+        "201":
+          description: Airport created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Airport"
+        "409":
+          description: An airport with this `code` already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /airports/{code}:
+    parameters:
+      - $ref: "#/components/parameters/AirportCode"
+    get:
+      tags: [Airports]
+      summary: Get one airport
+      description: Returns a single airport with its computed `futureFlights`.
+      operationId: getAirport
+      responses:
+        "200":
+          description: The airport
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Airport"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Airports]
+      summary: Replace an airport
+      description: >
+        Replaces the airport's fields. The `code` is taken from the path —
+        any `code` in the body is ignored.
+      operationId: updateAirport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AirportInput"
+      responses:
+        "200":
+          description: Updated airport
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Airport"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Airports]
+      summary: Delete an airport
+      description: Deletes an airport. Blocked if any flight references it as source or destination.
+      operationId: deleteAirport
+      responses:
+        "204":
+          description: Airport deleted (no content)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The airport cannot be deleted while flights reference it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /flights:
+    get:
+      tags: [Flights]
+      summary: List all flights
+      operationId: listFlights
+      responses:
+        "200":
+          description: List of flights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Flight"
+    post:
+      tags: [Flights]
+      summary: Create a flight
+      description: >
+        Creates a flight. Both `source` and `destination` must reference existing
+        airports. The `id` is server-assigned; any client-supplied `id` is ignored.
+      operationId: createFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "201":
+          description: Flight created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          description: A referenced airport (`source` or `destination`) does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /flights/{id}:
+    parameters:
+      - $ref: "#/components/parameters/FlightId"
+    get:
+      tags: [Flights]
+      summary: Get one flight
+      operationId: getFlight
+      responses:
+        "200":
+          description: The flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Flights]
+      summary: Update a flight
+      description: >
+        Updates a flight. Both `source` and `destination` must reference existing
+        airports. The `id` is taken from the path.
+      operationId: updateFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "200":
+          description: Updated flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          description: A referenced airport (`source` or `destination`) does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Flights]
+      summary: Delete a flight
+      operationId: deleteFlight
+      responses:
+        "204":
+          description: Flight deleted (no content)
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    AirportCode:
+      name: code
+      in: path
+      required: true
+      description: Airport identity code (e.g. an IATA code like `JFK`).
+      schema:
+        type: string
+      example: JFK
+    FlightId:
+      name: id
+      in: path
+      required: true
+      description: Server-assigned flight id.
+      schema:
+        type: integer
+        format: int64
+      example: 1
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Resource not found
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Internal server error
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      required: [error]
+      example:
+        error: Airport "JFK" not found
+
+    AirportInput:
+      type: object
+      description: Client-supplied airport fields. `futureFlights` is excluded (server-computed).
+      properties:
+        code:
+          type: string
+          description: Airport identity code. On update, the path param wins over this.
+          example: JFK
+        name:
+          type: string
+          example: John F. Kennedy International Airport
+        city:
+          type: string
+          example: New York
+        country:
+          type: string
+          example: United States
+        timezone:
+          type: string
+          example: America/New_York
+      required: [code, name, city, country, timezone]
+
+    Airport:
+      type: object
+      properties:
+        code:
+          type: string
+          example: JFK
+        name:
+          type: string
+          example: John F. Kennedy International Airport
+        city:
+          type: string
+          example: New York
+        country:
+          type: string
+          example: United States
+        timezone:
+          type: string
+          example: America/New_York
+        futureFlights:
+          type: array
+          readOnly: true
+          description: >
+            Computed on read: flights departing from this airport whose
+            `dateTimeDeparture` is strictly after now. Never client-set.
+          items:
+            $ref: "#/components/schemas/Flight"
+      required: [code, name, city, country, timezone, futureFlights]
+
+    FlightInput:
+      type: object
+      description: Client-supplied flight fields. `id` is excluded (server-assigned).
+      properties:
+        source:
+          type: string
+          description: Code of an existing airport the flight departs from.
+          example: JFK
+        destination:
+          type: string
+          description: Code of an existing airport the flight arrives at.
+          example: LAX
+        dateTimeDeparture:
+          type: string
+          format: date-time
+          example: "2026-12-01T08:30:00.000Z"
+        dateTimeLanding:
+          type: string
+          format: date-time
+          example: "2026-12-01T11:45:00.000Z"
+        airline:
+          type: string
+          example: Delta Air Lines
+        flightNumber:
+          type: string
+          example: DL123
+      required:
+        - source
+        - destination
+        - dateTimeDeparture
+        - dateTimeLanding
+        - airline
+        - flightNumber
+
+    Flight:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Server-assigned, monotonic, never reused.
+          example: 1
+        source:
+          type: string
+          example: JFK
+        destination:
+          type: string
+          example: LAX
+        dateTimeDeparture:
+          type: string
+          format: date-time
+          example: "2026-12-01T08:30:00.000Z"
+        dateTimeLanding:
+          type: string
+          format: date-time
+          example: "2026-12-01T11:45:00.000Z"
+        airline:
+          type: string
+          example: Delta Air Lines
+        flightNumber:
+          type: string
+          example: DL123
+      required:
+        - id
+        - source
+        - destination
+        - dateTimeDeparture
+        - dateTimeLanding
+        - airline
+        - flightNumber
