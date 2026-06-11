@@ -24,3 +24,12 @@ export function updateFlight(id: number, input: FlightInput): Flight {
 export function deleteFlight(id: number): void {
   db.deleteFlight(id);
 }
+
+// Every flight from the airport CODE
+
+// Every flight to the airport CODE
+
+// Every direct flight from aiport CODE_1 to airport CODE_2
+
+// Every Path of multiple flights from aiport CODE_1 to airport CODE_2 using DFS and backtracking
+

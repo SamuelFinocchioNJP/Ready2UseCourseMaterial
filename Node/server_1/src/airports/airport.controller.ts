@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { AirportInput } from "../types";
-import * as airportService from "../services/airport.service";
+import * as airportService from "./airport.service";
 import { handleError } from "../errors";
 
 const router = Router();
