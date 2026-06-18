@@ -1,5 +1,5 @@
 import { parse } from "csv-parse/sync";
-import * as airportService from "./airport.service";
+import { AirportUseCases } from "./use-cases";
 import { ConflictError } from "../errors";
 import { AirportInput } from "../types";
 
@@ -30,7 +30,7 @@ function clean(field: string | undefined): string {
     return value === NULL_MARKER ? "" : value;
 }
 
-export async function importAirports(): Promise<ImportSummary> {
+export async function importAirports(uc: AirportUseCases): Promise<ImportSummary> {
     const res = await fetch(AIRPORTS_URL);
     if (!res.ok) {
         throw new Error(`Failed to download airports.dat: ${res.status} ${res.statusText}`);
@@ -68,12 +68,12 @@ export async function importAirports(): Promise<ImportSummary> {
         // within the file (last one wins).
         try {
             if (input.country === "Italy") {
-                airportService.createAirport(input);
+                await uc.create.execute({ context: {}, data: input });
                 summary.imported++;
             }
         } catch (err) {
             if (err instanceof ConflictError) {
-                airportService.updateAirport(code, input);
+                await uc.update.execute({ context: {}, data: { code, airport: input } });
                 summary.updated++;
             } else {
                 summary.failed++;
