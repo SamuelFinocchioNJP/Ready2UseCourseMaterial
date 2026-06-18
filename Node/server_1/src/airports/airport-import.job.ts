@@ -30,12 +30,12 @@ function clean(field: string | undefined): string {
     return value === NULL_MARKER ? "" : value;
 }
 
-export async function importAirports(uc: AirportUseCases): Promise<ImportSummary> {
+export async function importAirports(airportUseCase: AirportUseCases): Promise<ImportSummary> {
     const res = await fetch(AIRPORTS_URL);
     if (!res.ok) {
         throw new Error(`Failed to download airports.dat: ${res.status} ${res.statusText}`);
     }
-    const csv = (await res.text()).replaceAll("\N", "");
+    const csv = await res.text();
 
     // No header row; quoted fields may contain commas. relax_* keeps the odd
     // malformed line from aborting the whole parse.
@@ -51,7 +51,6 @@ export async function importAirports(uc: AirportUseCases): Promise<ImportSummary
         const code = clean(row[COL.iata]);
         // IATA code is the store's primary key; a row without one cannot be stored.
         if (!code) {
-            console.log("SKIPPED:", row)
             summary.skipped++;
             continue;
         }
@@ -64,16 +63,17 @@ export async function importAirports(uc: AirportUseCases): Promise<ImportSummary
             timezone: clean(row[COL.timezone]),
         };
 
+        // Only Italian airports are seeded.
+        if (input.country !== "Italy") continue;
+
         // Upsert so the job is idempotent and tolerant of duplicate IATA codes
         // within the file (last one wins).
         try {
-            if (input.country === "Italy") {
-                await uc.create.execute({ context: {}, data: input });
-                summary.imported++;
-            }
+            await airportUseCase.create.execute({ context: {}, data: input });
+            summary.imported++;
         } catch (err) {
             if (err instanceof ConflictError) {
-                await uc.update.execute({ context: {}, data: { code, airport: input } });
+                await airportUseCase.update.execute({ context: {}, data: { code, airport: input } });
                 summary.updated++;
             } else {
                 summary.failed++;

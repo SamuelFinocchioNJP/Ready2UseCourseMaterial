@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Airport {
+  id       String @id // was `code: AirportCode` — IATA code is the identity
+  name     String
+  city     String
+  country  String
+  timezone String
+
+  // `futureFlights` from the interface maps to departing flights; the
+  // "future" date filter stays in app logic, not the schema. Both
+  // back-relations are required because Flight has two FKs to Airport.
+  departingFlights Flight[] @relation("DepartingFlights")
+  arrivingFlights  Flight[] @relation("ArrivingFlights")
+}
+
+model Flight {
+  id                Int      @id @default(autoincrement())
+  source            String // FK -> Airport.id (departure)
+  destination       String // FK -> Airport.id (arrival)
+  dateTimeDeparture DateTime
+  dateTimeLanding   DateTime
+  airline           String
+  flightNumber      String
+
+  sourceAirport      Airport @relation("DepartingFlights", fields: [source], references: [id])
+  destinationAirport Airport @relation("ArrivingFlights", fields: [destination], references: [id])
+}
