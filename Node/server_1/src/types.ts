@@ -16,9 +16,21 @@ export interface Airport {
   city: string;
   country: string;
   timezone: string;
-  futureFlights: Flight[];
+  // Computed view of upcoming departures, never intrinsic state and never persisted.
+  // Composed by the use cases that need it (via IFlightRepository.listUpcomingByAirport);
+  // repositories return airports without it, hence optional.
+  futureFlights?: Flight[];
 }
 
-// Client input shapes: server-owned fields are excluded.
-export type AirportInput = Omit<Airport, "futureFlights">; // futureFlights is computed, never client-set
-export type FlightInput = Omit<Flight, "id">; // id is server-assigned
+// Domain write type for airports: the persistable fields a client may set.
+// Kept as a distinct named type even though it mirrors Airport minus the computed view.
+export interface AirportInput {
+  code: AirportCode;
+  name: string;
+  city: string;
+  country: string;
+  timezone: string;
+}
+
+// Domain write type for flights: id is server-assigned, so it is excluded.
+export type FlightInput = Omit<Flight, "id">;

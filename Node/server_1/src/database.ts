@@ -1,29 +1,20 @@
 import { Airport, AirportCode, AirportInput, Flight, FlightInput } from "./types";
 import { ConflictError, IntegrityError, NotFoundError } from "./errors";
+import { IAirportRepository } from "./airports/repository/airport.repository.interface";
+import { IFlightRepository } from "./flights/repository/flight.repository.interface";
 
-// The in-memory "database". All data is lost on restart, by design.
-// The Maps and id counter are PRIVATE instance fields: the only way to read or
-// mutate data is through the methods below, which enforce data integrity.
-// This makes the integrity checks impossible to bypass from a controller.
-// A single instance is created in index.ts and injected into every use case.
-export class Database {
+// In-memory implementation of both aggregate repositories, backed by Maps.
+// All data is lost on restart, by design. A single class holds both aggregates so
+// the cross-aggregate integrity rules (a flight's airports must exist; an airport
+// referenced by a flight cannot be deleted) stay enforceable in one place.
+// This is the test double; the Prisma implementations are the production wiring.
+//
+// Note: airport reads return the bare entity WITHOUT `futureFlights`. The upcoming
+// departures view is exposed via listUpcomingByAirport and composed by the use cases.
+export class InMemoryRepository implements IAirportRepository, IFlightRepository {
   private readonly airports = new Map<AirportCode, Airport>();
   private readonly flights = new Map<number, Flight>();
   private nextFlightId = 1; // monotonic: ids are never reused, even after a delete
-
-  // Future-only projection: flights departing from this airport whose departure is
-  // strictly after "now". Computed on read so it stays correct as the clock advances.
-  private futureFlightsFor(code: AirportCode): Flight[] {
-    const now = Date.now();
-    return [...this.flights.values()].filter(
-      (f) => f.source === code && Date.parse(f.dateTimeDeparture) > now
-    );
-  }
-
-  // Build the response shape for an airport, overriding the stored (empty) futureFlights.
-  private view(airport: Airport): Airport {
-    return { ...airport, futureFlights: this.futureFlightsFor(airport.code) };
-  }
 
   // Referential integrity: both endpoints of a flight must reference existing airports.
   private assertAirportsExist(source: AirportCode, destination: AirportCode): void {
@@ -33,34 +24,34 @@ export class Database {
 
   // ---- Airports ----
 
-  listAirports(): Airport[] {
-    return [...this.airports.values()].map((a) => this.view(a));
+  async listAirports(): Promise<Airport[]> {
+    return [...this.airports.values()].map((a) => ({ ...a }));
   }
 
-  getAirport(code: AirportCode): Airport {
+  async getAirport(code: AirportCode): Promise<Airport> {
     const airport = this.airports.get(code);
     if (!airport) throw new NotFoundError(`Airport "${code}" not found`);
-    return this.view(airport);
+    return { ...airport };
   }
 
-  createAirport(input: AirportInput): Airport {
+  async createAirport(input: AirportInput): Promise<Airport> {
     if (this.airports.has(input.code)) {
       throw new ConflictError(`Airport "${input.code}" already exists`);
     }
-    const airport: Airport = { ...input, futureFlights: [] };
+    const airport: Airport = { ...input };
     this.airports.set(airport.code, airport);
-    return this.view(airport);
+    return { ...airport };
   }
 
-  updateAirport(code: AirportCode, input: AirportInput): Airport {
+  async updateAirport(code: AirportCode, input: AirportInput): Promise<Airport> {
     if (!this.airports.has(code)) throw new NotFoundError(`Airport "${code}" not found`);
-    const airport: Airport = { ...input, code, futureFlights: [] }; // code stays the path param
+    const airport: Airport = { ...input, code }; // code stays the path param
     this.airports.set(code, airport);
-    return this.view(airport);
+    return { ...airport };
   }
 
-  deleteAirport(code: AirportCode): Airport {
-    const toDelete = structuredClone(this.airports.get(code));
+  async deleteAirport(code: AirportCode): Promise<Airport> {
+    const toDelete = this.airports.get(code);
 
     if (!toDelete) throw new NotFoundError(`Airport "${code}" not found`);
 
@@ -74,42 +65,51 @@ export class Database {
 
     this.airports.delete(code);
 
-    return toDelete;
+    return { ...toDelete };
   }
 
   // ---- Flights ----
 
-  listFlights(): Flight[] {
-    return [...this.flights.values()];
+  async listFlights(): Promise<Flight[]> {
+    return [...this.flights.values()].map((f) => ({ ...f }));
   }
 
   // Every flight departing from the given airport. Unknown/typo codes simply yield [].
-  flightsFrom(source: AirportCode): Flight[] {
-    return [...this.flights.values()].filter((f) => f.source === source);
+  async flightsFrom(source: AirportCode): Promise<Flight[]> {
+    return [...this.flights.values()].filter((f) => f.source === source).map((f) => ({ ...f }));
   }
 
-  getFlight(id: number): Flight {
+  // Future-only projection: departures from this airport strictly after "now".
+  // Computed on read so it stays correct as the clock advances.
+  async listUpcomingByAirport(code: AirportCode): Promise<Flight[]> {
+    const now = Date.now();
+    return [...this.flights.values()]
+      .filter((f) => f.source === code && Date.parse(f.dateTimeDeparture) > now)
+      .map((f) => ({ ...f }));
+  }
+
+  async getFlight(id: number): Promise<Flight> {
     const flight = this.flights.get(id);
     if (!flight) throw new NotFoundError(`Flight ${id} not found`);
-    return flight;
+    return { ...flight };
   }
 
-  createFlight(input: FlightInput): Flight {
+  async createFlight(input: FlightInput): Promise<Flight> {
     this.assertAirportsExist(input.source, input.destination);
     const flight: Flight = { ...input, id: this.nextFlightId++ };
     this.flights.set(flight.id, flight);
-    return flight;
+    return { ...flight };
   }
 
-  updateFlight(id: number, input: FlightInput): Flight {
+  async updateFlight(id: number, input: FlightInput): Promise<Flight> {
     if (!this.flights.has(id)) throw new NotFoundError(`Flight ${id} not found`);
     this.assertAirportsExist(input.source, input.destination);
     const flight: Flight = { ...input, id };
     this.flights.set(id, flight);
-    return flight;
+    return { ...flight };
   }
 
-  deleteFlight(id: number): void {
+  async deleteFlight(id: number): Promise<void> {
     if (!this.flights.has(id)) throw new NotFoundError(`Flight ${id} not found`);
     this.flights.delete(id);
   }

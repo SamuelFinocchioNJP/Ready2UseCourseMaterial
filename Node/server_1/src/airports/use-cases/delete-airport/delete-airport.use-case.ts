@@ -1,14 +1,16 @@
 import { UseCase } from "../../../use-case";
-import { Database } from "../../../database";
+import { IAirportRepository } from "../../repository/airport.repository.interface";
 import { DeleteAirportInput } from "./types/delete-airport-input.interface";
 import { DeleteAirportOutput } from "./types/delete-airport-output.interface";
 
 // DELETE /airports/:code - delete an airport (blocked if any flight references it).
-// Returns the deleted airport.
+// Returns the deleted airport. futureFlights is a read-side computed view, so this
+// write use case returns the bare entity without it.
 export class DeleteAirportUseCase implements UseCase<DeleteAirportInput, DeleteAirportOutput> {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly airports: IAirportRepository) {}
 
   async execute({ data }: DeleteAirportInput): Promise<DeleteAirportOutput> {
-    return { airport: this.db.deleteAirport(data.code) };
+    const airport = await this.airports.deleteAirport(data.code);
+    return { airport };
   }
 }

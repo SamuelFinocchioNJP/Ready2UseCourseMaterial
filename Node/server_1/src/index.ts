@@ -1,16 +1,20 @@
 import express from "express";
-import { Database } from "./database";
+import { prisma } from "./prisma";
+import { PrismaAirportRepository } from "./airports/repository/airport.repository.prisma";
+import { PrismaFlightRepository } from "./flights/repository/flight.repository.prisma";
 import { createAirportUseCases } from "./airports/use-cases";
 import { createFlightUseCases } from "./flights/use-cases";
 import { createAirportsRouter } from "./airports/airport.controller";
 import { createFlightsRouter } from "./flights/flight.controller";
 import { importAirports } from "./airports/airport-import.job";
 
-// Compose the dependency graph: one Database instance is injected into every
-// use case, and the use case bundles are injected into their routers.
-const db = new Database();
-const airportUseCases = createAirportUseCases(db);
-const flightUseCases = createFlightUseCases(db);
+// Compose the dependency graph: the Prisma repositories (sharing one PrismaClient)
+// back the aggregates and are injected into the use case bundles, which are injected
+// into their routers. The InMemoryRepository in ./database remains as the test double.
+const airportRepo = new PrismaAirportRepository(prisma);
+const flightRepo = new PrismaFlightRepository(prisma);
+const airportUseCases = createAirportUseCases(airportRepo, flightRepo);
+const flightUseCases = createFlightUseCases(flightRepo);
 
 const app = express();
 

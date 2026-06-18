@@ -1,13 +1,24 @@
 import { UseCase } from "../../../use-case";
-import { Database } from "../../../database";
+import { IAirportRepository } from "../../repository/airport.repository.interface";
+import { IFlightRepository } from "../../../flights/repository/flight.repository.interface";
 import { ListAirportsInput } from "./types/list-airports-input.interface";
 import { ListAirportsOutput } from "./types/list-airports-output.interface";
 
-// GET /airports - list all airports (each with computed futureFlights).
+// GET /airports - list all airports, each with its computed upcoming-departures view.
 export class ListAirportsUseCase implements UseCase<ListAirportsInput, ListAirportsOutput> {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly airports: IAirportRepository,
+    private readonly flights: IFlightRepository
+  ) { }
 
   async execute(_input: ListAirportsInput): Promise<ListAirportsOutput> {
-    return { airports: this.db.listAirports() };
+    const airports = await this.airports.listAirports();
+    const withFlights = await Promise.all(
+      airports.map(async (airport) => ({
+        ...airport,
+        futureFlights: await this.flights.listUpcomingByAirport(airport.code),
+      }))
+    );
+    return { airports: withFlights };
   }
 }

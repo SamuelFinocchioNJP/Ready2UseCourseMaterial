@@ -1,4 +1,4 @@
-import { Database } from "../../database";
+import { IFlightRepository } from "../repository/flight.repository.interface";
 import { ListFlightsUseCase } from "./list-flights/list-flights.use-case";
 import { ListFlightsFromUseCase } from "./list-flights-from/list-flights-from.use-case";
 import { GetFlightUseCase } from "./get-flight/get-flight.use-case";
@@ -23,13 +23,13 @@ export interface FlightUseCases {
   delete: DeleteFlightUseCase;
 }
 
-export function createFlightUseCases(db: Database): FlightUseCases {
+export function createFlightUseCases(flights: IFlightRepository): FlightUseCases {
   return {
-    list: new ListFlightsUseCase(db),
-    listFrom: new ListFlightsFromUseCase(db),
-    get: new GetFlightUseCase(db),
-    create: new CreateFlightUseCase(db),
-    update: new UpdateFlightUseCase(db),
-    delete: new DeleteFlightUseCase(db),
+    list: new ListFlightsUseCase(flights),
+    listFrom: new ListFlightsFromUseCase(flights),
+    get: new GetFlightUseCase(flights),
+    create: new CreateFlightUseCase(flights),
+    update: new UpdateFlightUseCase(flights),
+    delete: new DeleteFlightUseCase(flights),
   };
 }

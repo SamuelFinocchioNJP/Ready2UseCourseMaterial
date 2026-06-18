@@ -1,4 +1,5 @@
-import { Database } from "../../database";
+import { IAirportRepository } from "../repository/airport.repository.interface";
+import { IFlightRepository } from "../../flights/repository/flight.repository.interface";
 import { ListAirportsUseCase } from "./list-airports/list-airports.use-case";
 import { GetAirportUseCase } from "./get-airport/get-airport.use-case";
 import { CreateAirportUseCase } from "./create-airport/create-airport.use-case";
@@ -20,12 +21,15 @@ export interface AirportUseCases {
   delete: DeleteAirportUseCase;
 }
 
-export function createAirportUseCases(db: Database): AirportUseCases {
+export function createAirportUseCases(
+  airports: IAirportRepository,
+  flights: IFlightRepository
+): AirportUseCases {
   return {
-    list: new ListAirportsUseCase(db),
-    get: new GetAirportUseCase(db),
-    create: new CreateAirportUseCase(db),
-    update: new UpdateAirportUseCase(db),
-    delete: new DeleteAirportUseCase(db),
+    list: new ListAirportsUseCase(airports, flights),
+    get: new GetAirportUseCase(airports, flights),
+    create: new CreateAirportUseCase(airports),
+    update: new UpdateAirportUseCase(airports, flights),
+    delete: new DeleteAirportUseCase(airports),
   };
 }

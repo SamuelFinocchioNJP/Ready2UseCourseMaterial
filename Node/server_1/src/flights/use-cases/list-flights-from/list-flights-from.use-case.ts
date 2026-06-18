@@ -1,5 +1,5 @@
 import { UseCase } from "../../../use-case";
-import { Database } from "../../../database";
+import { IFlightRepository } from "../../repository/flight.repository.interface";
 import { ListFlightsFromInput } from "./types/list-flights-from-input.interface";
 import { ListFlightsFromOutput } from "./types/list-flights-from-output.interface";
 
@@ -7,9 +7,9 @@ import { ListFlightsFromOutput } from "./types/list-flights-from-output.interfac
 export class ListFlightsFromUseCase
   implements UseCase<ListFlightsFromInput, ListFlightsFromOutput>
 {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly flights: IFlightRepository) {}
 
   async execute({ data }: ListFlightsFromInput): Promise<ListFlightsFromOutput> {
-    return { flights: this.db.flightsFrom(data.source) };
+    return { flights: await this.flights.flightsFrom(data.source) };
   }
 }
