@@ -25,6 +25,9 @@ model Airport {
   // back-relations are required because Flight has two FKs to Airport.
   departingFlights Flight[] @relation("DepartingFlights")
   arrivingFlights  Flight[] @relation("ArrivingFlights")
+
+  // Reroutes whose new destination is this airport (3rd relation to Airport).
+  rerouteDestinations FlightReroute[] @relation("RerouteDestination")
 }
 
 model Flight {
@@ -38,4 +41,40 @@ model Flight {
 
   sourceAirport      Airport @relation("DepartingFlights", fields: [source], references: [id])
   destinationAirport Airport @relation("ArrivingFlights", fields: [destination], references: [id])
+
+  // Append-only disruption history; both cascade so deleting a flight clears its events.
+  delays   FlightDelay[]   @relation("FlightDelays")
+  reroutes FlightReroute[] @relation("FlightReroutes")
+}
+
+// Append-only record of a rescheduled flight: a new departure/landing pair and a
+// free-text reason. The original Flight row is never mutated; the latest delay
+// (by createdAt) is the effective schedule.
+model FlightDelay {
+  id                Int      @id @default(autoincrement())
+  flightId          Int // FK -> Flight.id
+  dateTimeDeparture DateTime // new scheduled departure
+  dateTimeLanding   DateTime // new scheduled landing
+  reason            String
+  createdAt         DateTime @default(now())
+
+  flight Flight @relation("FlightDelays", fields: [flightId], references: [id], onDelete: Cascade)
+
+  @@index([flightId])
+}
+
+// Append-only record of a flight diverted to a different destination airport.
+// The original Flight row is never mutated; newDestination references Airport.id.
+model FlightReroute {
+  id             Int      @id @default(autoincrement())
+  flightId       Int // FK -> Flight.id
+  newDestination String // FK -> Airport.id
+  reason         String
+  createdAt      DateTime @default(now())
+
+  flight                Flight  @relation("FlightReroutes", fields: [flightId], references: [id], onDelete: Cascade)
+  newDestinationAirport Airport @relation("RerouteDestination", fields: [newDestination], references: [id], onDelete: Restrict)
+
+  @@index([flightId])
+  @@index([newDestination])
 }

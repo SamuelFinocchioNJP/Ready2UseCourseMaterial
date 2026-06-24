@@ -5,8 +5,8 @@ import { importAirports } from "./infrastructure/airport-import.job";
 // Process entry point. Builds the dependency graph (composition root), assembles
 // the Express app, seeds airports from OpenFlights (non-fatal — a fetch/parse
 // failure is logged and the server still boots), then starts listening on 8080.
-const { airportUseCases, flightUseCases } = compose();
-const app = createApp(airportUseCases, flightUseCases);
+const { airportUseCases, flightUseCases, flightDelayUseCases, flightRerouteUseCases } = compose();
+const app = createApp(airportUseCases, flightUseCases, flightDelayUseCases, flightRerouteUseCases);
 
 async function start() {
   try {

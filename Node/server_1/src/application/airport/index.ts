@@ -1,5 +1,6 @@
 import { IAirportRepository } from "./airport.repository";
 import { IFlightRepository } from "../flight/flight.repository";
+import { IFlightRerouteRepository } from "../flight-reroute/flight-reroute.repository";
 import { ListAirportsUseCase } from "./list-airports/list-airports.use-case";
 import { GetAirportUseCase } from "./get-airport/get-airport.use-case";
 import { CreateAirportUseCase } from "./create-airport/create-airport.use-case";
@@ -23,13 +24,14 @@ export interface AirportUseCases {
 
 export function createAirportUseCases(
   airports: IAirportRepository,
-  flights: IFlightRepository
+  flights: IFlightRepository,
+  reroutes: IFlightRerouteRepository
 ): AirportUseCases {
   return {
     list: new ListAirportsUseCase(airports, flights),
     get: new GetAirportUseCase(airports, flights),
     create: new CreateAirportUseCase(airports),
     update: new UpdateAirportUseCase(airports, flights),
-    delete: new DeleteAirportUseCase(airports, flights),
+    delete: new DeleteAirportUseCase(airports, flights, reroutes),
   };
 }
