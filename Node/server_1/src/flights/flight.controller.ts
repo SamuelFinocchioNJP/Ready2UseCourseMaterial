@@ -1,12 +1,20 @@
 import { Router, Request, Response } from "express";
-import { FlightInput } from "../types";
 import { RequestContext } from "../request-context";
 import { handleError } from "../errors";
+import { validate, validated } from "../http/validation";
 import { FlightUseCases } from "./use-cases";
+import { listFlightsDto } from "./dto/list-flights.dto";
+import { getFlightDto } from "./dto/get-flight.dto";
+import { createFlightDto } from "./dto/create-flight.dto";
+import { updateFlightDto } from "./dto/update-flight.dto";
+import { deleteFlightDto } from "./dto/delete-flight.dto";
+import { toFlightResponse, toFlightListResponse } from "./dto/flight-response.dto";
 
 // Builds the flights router with its use cases injected. Controllers own only
-// HTTP concerns: parse the request into a use case input, call execute, and
-// shape the response. Route identifiers go in `data`; ambient metadata in `context`.
+// HTTP concerns: the per-endpoint DTO (validate) turns the request into a typed,
+// validated input; the handler assembles the use case input, calls execute, and
+// shapes the response through the response DTO. Route identifiers go in `data`;
+// ambient metadata in `context`.
 export function createFlightsRouter(uc: FlightUseCases): Router {
   const router = Router();
 
@@ -14,58 +22,62 @@ export function createFlightsRouter(uc: FlightUseCases): Router {
 
   // GET /flights            - list all flights
   // GET /flights?source=XXX - flights departing from airport XXX
-  router.get("/", async (req: Request, res: Response) => {
-    const source = req.query.source;
-    const out =
-      typeof source === "string"
-        ? await uc.listFrom.execute({ context: ctx(req), data: { source } })
+  router.get("/", validate(listFlightsDto), async (req: Request, res: Response) => {
+    try {
+      const { query } = validated<typeof listFlightsDto>(res);
+      const out = query.source
+        ? await uc.listFrom.execute({ context: ctx(req), data: { source: query.source } })
         : await uc.list.execute({ context: ctx(req), data: {} });
-    return res.json(out.flights);
+      return res.json(toFlightListResponse(out.flights));
+    } catch (err) {
+      return handleError(err, res);
+    }
   });
 
   // GET /flights/:id - get one flight
-  router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  router.get("/:id", validate(getFlightDto), async (req: Request, res: Response) => {
     try {
+      const { params } = validated<typeof getFlightDto>(res);
       const { flight } = await uc.get.execute({
         context: ctx(req),
-        data: { id: Number(req.params.id) },
+        data: { id: params.id },
       });
-      return res.json(flight);
+      return res.json(toFlightResponse(flight));
     } catch (err) {
       return handleError(err, res);
     }
   });
 
   // POST /flights - create a flight (id is server-assigned; any client id is ignored)
-  router.post("/", async (req: Request, res: Response) => {
+  router.post("/", validate(createFlightDto), async (req: Request, res: Response) => {
     try {
-      const { flight } = await uc.create.execute({
-        context: ctx(req),
-        data: req.body as FlightInput,
-      });
-      return res.status(201).json(flight);
+      const { body } = validated<typeof createFlightDto>(res);
+      const { flight } = await uc.create.execute({ context: ctx(req), data: body });
+      return res.status(201).json(toFlightResponse(flight));
     } catch (err) {
       return handleError(err, res);
     }
   });
 
   // PUT /flights/:id - update a flight
-  router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  router.put("/:id", validate(updateFlightDto), async (req: Request, res: Response) => {
     try {
+      const { params, body } = validated<typeof updateFlightDto>(res);
       const { flight } = await uc.update.execute({
         context: ctx(req),
-        data: { id: Number(req.params.id), flight: req.body as FlightInput },
+        data: { id: params.id, flight: body },
       });
-      return res.json(flight);
+      return res.json(toFlightResponse(flight));
     } catch (err) {
       return handleError(err, res);
     }
   });
 
   // DELETE /flights/:id - delete a flight
-  router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  router.delete("/:id", validate(deleteFlightDto), async (req: Request, res: Response) => {
     try {
-      await uc.delete.execute({ context: ctx(req), data: { id: Number(req.params.id) } });
+      const { params } = validated<typeof deleteFlightDto>(res);
+      await uc.delete.execute({ context: ctx(req), data: { id: params.id } });
       return res.status(204).end();
     } catch (err) {
       return handleError(err, res);
