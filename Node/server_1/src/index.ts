@@ -1,30 +1,13 @@
-import express from "express";
-import { prisma } from "./prisma";
-import { PrismaAirportRepository } from "./airports/repository/airport.repository.prisma";
-import { PrismaFlightRepository } from "./flights/repository/flight.repository.prisma";
-import { createAirportUseCases } from "./airports/use-cases";
-import { createFlightUseCases } from "./flights/use-cases";
-import { createAirportsRouter } from "./airports/airport.controller";
-import { createFlightsRouter } from "./flights/flight.controller";
-import { importAirports } from "./airports/airport-import.job";
+import { compose } from "./frameworks/express/composition-root";
+import { createApp } from "./frameworks/express/app";
+import { importAirports } from "./infrastructure/airport-import.job";
 
-// Compose the dependency graph: the Prisma repositories (sharing one PrismaClient)
-// back the aggregates and are injected into the use case bundles, which are injected
-// into their routers. The InMemoryRepository in ./database remains as the test double.
-const airportRepo = new PrismaAirportRepository(prisma);
-const flightRepo = new PrismaFlightRepository(prisma);
-const airportUseCases = createAirportUseCases(airportRepo, flightRepo);
-const flightUseCases = createFlightUseCases(flightRepo);
+// Process entry point. Builds the dependency graph (composition root), assembles
+// the Express app, seeds airports from OpenFlights (non-fatal — a fetch/parse
+// failure is logged and the server still boots), then starts listening on 8080.
+const { airportUseCases, flightUseCases } = compose();
+const app = createApp(airportUseCases, flightUseCases);
 
-const app = express();
-
-app.use(express.json());
-
-app.use("/airports", createAirportsRouter(airportUseCases));
-app.use("/flights", createFlightsRouter(flightUseCases));
-
-// Seed the in-memory store from OpenFlights before serving. A fetch/parse
-// failure is logged but non-fatal: the server still boots with an empty store.
 async function start() {
   try {
     const summary = await importAirports(airportUseCases);
